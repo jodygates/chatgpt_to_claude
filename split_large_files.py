@@ -1,5 +1,4 @@
 import os
-import re
 import argparse
 
 
@@ -23,20 +22,39 @@ def split_file(filepath, max_size_mb=25.0, delete_original=False):
         content = f.read()
 
     # Detect the header that starts each conversation.
-    # Claude format uses "## Title", legacy uses "## Conversation: Title".
-    # We split on the markdown H2 that begins a conversation block.
-    # We keep the first chunk (file-level header) separate.
-    pattern = r"(?=\n## )"
-    parts_raw = re.split(pattern, content, flags=re.MULTILINE)
-    # parts_raw[0] is everything before the first "## " (the file header)
+    # Claude format uses "## Title\n\n**Date:**", legacy uses "## Conversation: Title".
+    # We must NOT split on non-conversation H2s like "## Overview" or
+    # "## Table of Contents" that appear in auto-generated preambles.
+    lines = content.split("\n")
+    boundary_indices: list[int] = []  # line indices where conversations start
+    for i, line in enumerate(lines):
+        if not line.startswith("## "):
+            continue
+        # Legacy format: "## Conversation: ..."
+        if line.startswith("## Conversation:"):
+            boundary_indices.append(i)
+            continue
+        # Claude format: "## Title" followed (within 3 lines) by "**Date:**"
+        for lookahead in range(1, min(4, len(lines) - i)):
+            if lines[i + lookahead].startswith("**Date:**"):
+                boundary_indices.append(i)
+                break
 
-    if len(parts_raw) <= 1:
+    if not boundary_indices:
         print("  ⚠️  No conversation boundaries found — cannot split.")
         return False
 
-    # Extract the file-level header (e.g., "# ChatGPT Conversations — 2024-06\n\n")
-    file_header = parts_raw[0]
-    conversations = parts_raw[1:]
+    # Extract the file-level header (everything before the first conversation)
+    first_boundary = boundary_indices[0]
+    if first_boundary == 0:
+        file_header = ""  # file starts directly with a conversation heading
+    else:
+        file_header = "\n".join(lines[:first_boundary]) + "\n"
+    # Build list of conversation text blocks
+    conversations: list[str] = []
+    for idx, start in enumerate(boundary_indices):
+        end = boundary_indices[idx + 1] if idx + 1 < len(boundary_indices) else len(lines)
+        conversations.append("\n".join(lines[start:end]) + "\n")
 
     base_name = os.path.splitext(filepath)[0]
     part_num = 1

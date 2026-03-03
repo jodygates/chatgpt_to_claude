@@ -49,7 +49,7 @@ def _build_preamble(
     if total == 0:
         return "# ChatGPT Conversation History\n\nNo conversations.\n\n"
 
-    timestamps = [c.get("create_time") for c in conversations if c.get("create_time")]
+    timestamps = [t for c in conversations if (t := c.get("create_time")) is not None]
     earliest = min(timestamps) if timestamps else None
     latest = max(timestamps) if timestamps else None
 
@@ -149,64 +149,137 @@ def main():
         _export_single_or_split(data, args, fmt_kwargs, utc)
 
 
+def _write_knowledge_files(
+    conversations: list[dict],
+    fmt_kwargs: dict,
+    utc: bool,
+    max_chars: int,
+    out_dir: str,
+    base_name: str = "claude_knowledge",
+    part_info_prefix: str = "",
+) -> int:
+    """
+    Format and write conversations to one-or-more knowledge files.
+
+    Formats conversations one at a time and flushes each part to disk as
+    soon as it reaches *max_chars*, keeping at most one part's worth of
+    formatted text in memory at any time.
+
+    Returns the number of files written.
+    """
+    part_num = 0
+    current_convs: list[dict] = []
+    current_texts: list[str] = []
+    current_chars = 0
+
+    def _flush() -> tuple[str, int, float] | None:
+        nonlocal part_num, current_convs, current_texts, current_chars
+        if not current_convs:
+            return None
+        part_num += 1
+        if part_info_prefix:
+            info = f"{part_info_prefix} (Part {part_num})"
+        else:
+            info = f"(Part {part_num})"
+        preamble = _build_preamble(current_convs, utc=utc, part_info=info)
+        filename = f"{base_name}_part{part_num}.md"
+        filepath = os.path.join(out_dir, filename)
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(preamble)
+            for t in current_texts:
+                f.write(t)
+        size_kb = os.path.getsize(filepath) / 1024
+        conv_count = len(current_convs)
+        current_convs = []
+        current_texts = []
+        current_chars = 0
+        return filename, conv_count, size_kb
+
+    written: list[tuple[str, int, float]] = []  # (filename, conv_count, size_kb)
+
+    for conv in conversations:
+        text = format_conversation(conv, **fmt_kwargs)
+        text_len = len(text)
+
+        # Dynamically compute preamble size for the tentative part, since
+        # _build_preamble scales with conversation count (table of contents).
+        tentative_convs = current_convs + [conv]
+        preamble_len = len(_build_preamble(tentative_convs, utc=utc))
+
+        if current_chars + text_len + preamble_len > max_chars and current_convs:
+            result = _flush()
+            if result:
+                written.append(result)
+        current_convs.append(conv)
+        current_texts.append(text)
+        current_chars += text_len
+
+    result = _flush()
+    if result:
+        written.append(result)
+
+    # Single part: rename to clean filename and strip "(Part 1)" from preamble
+    if part_num == 1:
+        part_path = os.path.join(out_dir, f"{base_name}_part1.md")
+        clean_path = os.path.join(out_dir, f"{base_name}.md")
+        with open(part_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        # Remove the "(Part 1)" marker from the preamble heading
+        if part_info_prefix:
+            content = content.replace(
+                f"{part_info_prefix} (Part 1)", part_info_prefix, 1
+            )
+        else:
+            content = content.replace(" (Part 1)", "", 1)
+        with open(clean_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        if part_path != clean_path:
+            os.remove(part_path)
+        # Update printed filename to the clean name
+        written[0] = (f"{base_name}.md", written[0][1], written[0][2])
+
+    # Print all filenames after any renames are done
+    for filename, conv_count, size_kb in written:
+        print(f"  ➜ {filename} ({conv_count} conversations, {size_kb:.0f} KB)")
+
+    return part_num
+
+
 def _export_single_or_split(data, args, fmt_kwargs, utc):
     """Export all conversations into one file, splitting if over the char limit."""
     max_chars = args.max_chars
 
-    # Pre-format all conversations
-    formatted = []
-    for conv in data:
-        text = format_conversation(conv, **fmt_kwargs)
-        formatted.append((conv, text))
-
-    # Try to fit into a single file, otherwise split
-    parts: list[list[tuple[dict, str]]] = []
-    current_part: list[tuple[dict, str]] = []
-    current_chars = 0
-
-    # Reserve space for preamble (estimate ~3K chars)
-    preamble_reserve = 5000
-
-    for conv, text in formatted:
-        text_len = len(text)
-        if current_chars + text_len + preamble_reserve > max_chars and current_part:
-            parts.append(current_part)
-            current_part = []
-            current_chars = 0
-        current_part.append((conv, text))
-        current_chars += text_len
-
-    if current_part:
-        parts.append(current_part)
-
-    print(f"\n📂 Writing {len(parts)} knowledge file(s)...")
-
-    for i, part_convs in enumerate(parts, 1):
-        part_info = f"(Part {i}/{len(parts)})" if len(parts) > 1 else ""
-        convs_only = [c for c, _ in part_convs]
-
-        preamble = _build_preamble(convs_only, utc=utc, part_info=part_info)
-        body = "".join(text for _, text in part_convs)
-
-        if len(parts) > 1:
-            filename = f"claude_knowledge_part{i}.md"
-        else:
-            filename = "claude_knowledge.md"
-
-        filepath = os.path.join(args.out_dir, filename)
+    if args.single_file:
+        # Force everything into one file regardless of size limits
+        print("\n📂 Writing 1 knowledge file (--single-file)...")
+        preamble = _build_preamble(data, utc=utc)
+        filepath = os.path.join(args.out_dir, "claude_knowledge.md")
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(preamble)
-            f.write(body)
-
+            for conv in data:
+                f.write(format_conversation(conv, **fmt_kwargs))
         size_kb = os.path.getsize(filepath) / 1024
-        print(f"  ➜ {filename} ({len(convs_only)} conversations, {size_kb:.0f} KB)")
+        print(f"  ➜ claude_knowledge.md ({len(data)} conversations, {size_kb:.0f} KB)")
+        # Warn if the single file exceeds the limit
+        with open(filepath, "r", encoding="utf-8") as f:
+            char_count = len(f.read())
+        if char_count > max_chars:
+            print(f"  ⚠️  File exceeds --max-chars ({char_count:,} > {max_chars:,} chars).")
+            print("      Claude may truncate this file. Remove --single-file to auto-split.")
+    else:
+        print("\n📂 Writing knowledge file(s)...")
+        part_count = _write_knowledge_files(
+            data, fmt_kwargs, utc, max_chars, args.out_dir,
+        )
+        print(f"\n   {part_count} file(s) produced.")
 
     print(f"\n🎉 Done! Files written to '{args.out_dir}/'.")
     print("   Upload these files to a Claude Project as Knowledge sources.")
 
 
 def _export_by_month(data, args, fmt_kwargs, utc):
-    """Export one knowledge file per month."""
+    """Export one knowledge file per month, splitting oversized months."""
+    max_chars = args.max_chars
     monthly: dict[str, list[dict]] = defaultdict(list)
 
     for conv in data:
@@ -219,24 +292,20 @@ def _export_by_month(data, args, fmt_kwargs, utc):
 
     sorted_months = sorted(monthly.keys(), reverse=True)
 
-    print(f"\n📂 Writing {len(sorted_months)} monthly knowledge file(s)...")
+    print(f"\n📂 Writing monthly knowledge file(s)...")
 
+    total_files = 0
     for month in sorted_months:
         convs = monthly[month]
-        preamble = _build_preamble(convs, utc=utc, part_info=f"— {month}")
-        body = "".join(format_conversation(c, **fmt_kwargs) for c in convs)
+        part_count = _write_knowledge_files(
+            convs, fmt_kwargs, utc, max_chars, args.out_dir,
+            base_name=f"claude_knowledge_{month}",
+            part_info_prefix=f"— {month}",
+        )
+        total_files += part_count
 
-        filename = f"claude_knowledge_{month}.md"
-        filepath = os.path.join(args.out_dir, filename)
-
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(preamble)
-            f.write(body)
-
-        size_kb = os.path.getsize(filepath) / 1024
-        print(f"  ➜ {filename} ({len(convs)} conversations, {size_kb:.0f} KB)")
-
-    print(f"\n🎉 Done! {len(sorted_months)} monthly files written to '{args.out_dir}/'.")
+    print(f"\n🎉 Done! {total_files} file(s) across {len(sorted_months)} months "
+          f"written to '{args.out_dir}/'.")
     print("   Upload these files to a Claude Project as Knowledge sources.")
 
 

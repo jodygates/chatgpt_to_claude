@@ -15,13 +15,26 @@ from utils import (
 )
 
 
+# Windows reserved device names that cannot be used as filenames.
+_WINDOWS_RESERVED = frozenset({
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(10)),
+    *(f"LPT{i}" for i in range(10)),
+})
+
+
 def _safe_filename(title: str, max_len: int = 80) -> str:
     """Turn a conversation title into a filesystem-safe filename."""
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', title)
     name = name.strip('. ')
     if not name:
         name = "Untitled"
-    return name[:max_len]
+    name = name[:max_len]
+    # Guard against Windows reserved device names (CON, PRN, NUL, COM1, …)
+    stem = name.split('.')[0].upper()
+    if stem in _WINDOWS_RESERVED:
+        name = f"_{name}"
+    return name
 
 
 def _project_folder_name(gizmo_id: str, conversations: list[dict], index: int) -> str:

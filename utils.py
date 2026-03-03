@@ -8,7 +8,6 @@ and filtering capabilities used by all export scripts.
 import json
 import os
 from datetime import datetime, timezone
-from collections import defaultdict
 
 
 # ---------------------------------------------------------------------------
@@ -18,13 +17,6 @@ from collections import defaultdict
 CLAUDE_PROJECT_LIMIT_CHARS = 500_000   # ~200K tokens
 NOTEBOOKLM_LIMIT_MB = 50
 DEFAULT_SPLIT_MB = 25.0
-
-ROLE_LABELS = {
-    "user": "User",
-    "assistant": "Assistant",
-    "system": "System",
-    "tool": "Tool",
-}
 
 
 # ---------------------------------------------------------------------------

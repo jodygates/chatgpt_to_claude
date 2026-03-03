@@ -3,7 +3,7 @@ from collections import defaultdict
 import argparse
 
 from utils import (
-    load_conversations, format_conversation, filter_conversations,
+    load_conversations, format_conversation,
     add_common_args, apply_filters, get_format_kwargs, ts_to_datetime,
 )
 
