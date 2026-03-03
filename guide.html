@@ -118,9 +118,37 @@
             font-weight: 600;
         }
 
+        .step-card h3 {
+            font-size: 1.25rem;
+            margin: 25px 0 10px 0;
+            font-weight: 600;
+            color: #C4B5FD;
+        }
+
+        .step-card h3:first-of-type {
+            margin-top: 10px;
+        }
+
         p {
             margin-bottom: 20px;
             font-size: 1.1rem;
+        }
+
+        ul {
+            margin-bottom: 20px;
+            padding-left: 20px;
+        }
+
+        ul li {
+            margin-bottom: 8px;
+            font-size: 1.05rem;
+        }
+
+        code {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.95em;
         }
 
         .code-block {
@@ -176,7 +204,7 @@
         <header>
             <h1>ChatGPT to Claude</h1>
             <p class="subtitle">The definitive workflow to migrate your context, instructions, and history over to
-                Claude using Google's NotebookLM.</p>
+                Claude — directly or via Google's NotebookLM.</p>
         </header>
 
         <div class="step-card">
@@ -198,54 +226,77 @@
 
         <div class="step-card">
             <div class="step-number">3</div>
-            <h2>Run the monthly splitter</h2>
-            <p>NotebookLM and Claude cannot ingest a massive JSON file directly. We need to split it into readable
-                Markdown texts grouped by month.</p>
-            <p>Open your terminal in the repository folder and run:</p>
+            <h2>Choose your export path</h2>
+            <p>You have several ways to structure your export. Pick the one that fits your workflow:</p>
+
+            <h3>Path A: Package directly for Claude <span class="optional-badge">Recommended</span></h3>
+            <p>The fastest way to get your history into Claude. Generates ready-to-upload Project Knowledge files with
+                an auto-generated summary, table of contents, and optimised formatting.</p>
+            <div class="code-block">python package_for_claude.py</div>
+            <p>Split by month instead:</p>
+            <div class="code-block">python package_for_claude.py --by-month</div>
+
+            <h3>Path B: One file per conversation</h3>
+            <p>Export each chat as its own Markdown file — great for browsing or selective upload.</p>
+            <div class="code-block">python split_by_conversation.py --prefix-date</div>
+            <p>Organise into project folders and month subfolders:</p>
+            <div class="code-block">python split_by_conversation.py --prefix-date --group-by-project --group-by-month</div>
+
+            <h3>Path C: Split by month</h3>
+            <p>Group all conversations into monthly Markdown files.</p>
             <div class="code-block">python split_by_month.py</div>
-            <p>This will generate a new folder called <code>monthly_exports/</code>, filled with beautiful Markdown
-                files labeled by month.</p>
+
+            <h3>Path D: Extract by ChatGPT Project</h3>
+            <p>Bundle conversations back into their original Projects with an index map.</p>
+            <div class="code-block">python extract_projects.py</div>
         </div>
 
         <div class="step-card">
             <div class="step-number">4</div>
-            <h2>Extract ChatGPT Projects <span class="optional-badge">Optional</span></h2>
-            <p>If you're a Plus or Team user, you likely used ChatGPT's <strong>Projects</strong> feature. ChatGPT hides
-                these under the hood as "Custom GPTs" or "Gizmos" in the data export without their human-readable names.
-            </p>
-            <p>Run the project extraction script to intelligently bundle your conversations back into their original
-                Projects:</p>
-            <div class="code-block">python extract_projects.py</div>
-            <p>This creates a <code>chatgpt_projects/</code> folder, along with a <code>Projects_Index.md</code> map
-                that helps you identify which file belongs to which project based on the conversation titles.</p>
+            <h2>Filter your export <span class="optional-badge">Optional</span></h2>
+            <p>All scripts support powerful filtering flags. Combine them freely to export exactly what you need.</p>
+            <div class="code-block"># Only conversations from 2024<br>python package_for_claude.py --after 2024-01-01 --before 2025-01-01<br><br># Only GPT-4o conversations<br>python split_by_month.py --model gpt-4o<br><br># Search for a topic<br>python split_by_conversation.py --keyword "machine learning" --prefix-date<br><br># Exclude archived, combine filters<br>python package_for_claude.py --after 2024-06-01 --model gpt-4o --exclude-archived</div>
+            <p>Available filters: <code>--after</code>, <code>--before</code>, <code>--keyword</code>,
+                <code>--model</code>, <code>--starred-only</code>, <code>--exclude-archived</code>.</p>
         </div>
 
         <div class="step-card">
             <div class="step-number">5</div>
-            <h2>Run the chunking script <span class="optional-badge">Optional</span></h2>
-            <p>Google's NotebookLM has a strict upload limit of 500,000 words or 50MB per source. If you are a heavy
-                ChatGPT user, your monthly chunks or specific projects might still be too large!</p>
-            <p>Run the secondary script to automatically slice large files into smaller parts:</p>
-            <div class="code-block">python split_large_files.py monthly_exports<br>python split_large_files.py
-                chatgpt_projects</div>
-            <p>It will safely split files without breaking conversations across files.</p>
+            <h2>Choose your output format <span class="optional-badge">Optional</span></h2>
+            <p>All scripts default to <code>--format claude</code>, which is concise and optimised for Claude's Project
+                Knowledge. Switch to the verbose format for NotebookLM:</p>
+            <div class="code-block">python split_by_month.py --format notebooklm</div>
+            <p>Other useful flags:</p>
+            <ul>
+                <li><code>--no-tools</code> — Exclude tool messages (memory updates, code interpreter, etc.)</li>
+                <li><code>--include-system</code> — Include non-empty system messages (active custom instructions)</li>
+                <li><code>--local-timezone</code> — Use your local timezone instead of UTC</li>
+            </ul>
         </div>
 
         <div class="step-card">
             <div class="step-number">6</div>
-            <h2>Take the files into NotebookLM <span class="optional-badge">Optional</span></h2>
-            <p>Now, head over to <a href="https://notebooklm.google.com" target="_blank">Google NotebookLM</a> and
-                create a new notebook.</p>
-            <p>Drag and drop your generated Markdown files into the Sources panel. It will take a minute or two to index
-                your entire chat history.</p>
+            <h2>Split large files <span class="optional-badge">Optional</span></h2>
+            <p>If any files exceed upload limits (NotebookLM: 500,000 words / 50 MB), split them automatically:</p>
+            <div class="code-block">python split_large_files.py monthly_exports<br>python split_large_files.py
+                claude_projects</div>
+            <p>Files are split at conversation boundaries so no single chat is broken across files. Each part repeats
+                the file header so it's self-contained.</p>
         </div>
 
         <div class="step-card">
             <div class="step-number">7</div>
-            <h2>Extract useful data <span class="optional-badge">Optional</span></h2>
-            <p>Use NotebookLM to analyze your history and build a robust <strong>Project Knowledge</strong> payload for
-                Claude.</p>
-            <p>Try prompting NotebookLM with the following:</p>
+            <h2>Upload to Claude or NotebookLM</h2>
+
+            <h3>Direct to Claude <span class="optional-badge">Recommended</span></h3>
+            <p>Go to <a href="https://claude.ai" target="_blank">claude.ai</a>, create a new <strong>Project</strong>,
+                and upload your generated Markdown files as <strong>Project Knowledge</strong> sources. Claude will have
+                full context of your conversation history.</p>
+
+            <h3>Via NotebookLM <span class="optional-badge">Optional</span></h3>
+            <p>Head over to <a href="https://notebooklm.google.com" target="_blank">Google NotebookLM</a> and create a
+                new notebook. Drag and drop your Markdown files into the Sources panel.</p>
+            <p>Try prompting NotebookLM with:</p>
             <ul>
                 <li><em>"Analyze these conversations and write a comprehensive 'Custom Instructions' guide that captures
                         my communication style and preferences."</em></li>
@@ -255,6 +306,88 @@
             </ul>
             <p>Copy NotebookLM's output, and paste it straight into Claude's <strong>Project Knowledge</strong> to hit
                 the ground running!</p>
+        </div>
+
+        <div class="step-card">
+            <div class="step-number">8</div>
+            <h2>Suggested Prompts</h2>
+            <p>Once your conversations are uploaded, use these prompts to extract maximum value from your history.</p>
+
+            <h3>NotebookLM — Personality & Communication Style</h3>
+            <ul>
+                <li><em>"Build a detailed profile of how I communicate: my preferred tone, vocabulary patterns, whether
+                        I'm formal or informal, how I phrase requests, and how I handle disagreements or pushback from
+                        the AI."</em></li>
+                <li><em>"What recurring phrases, idioms, or verbal habits do I use? List them with examples."</em></li>
+            </ul>
+
+            <h3>NotebookLM — Working Patterns</h3>
+            <ul>
+                <li><em>"Analyze how I use AI as a tool. Do I prefer step-by-step guidance, full code solutions,
+                        brainstorming, or validation of my own ideas? Summarize my working style."</em></li>
+                <li><em>"What times of day and days of the week am I most active? Are there patterns in what topics I
+                        discuss at different times?"</em></li>
+            </ul>
+
+            <h3>NotebookLM — Project Context Extraction</h3>
+            <ul>
+                <li><em>"For each distinct project or recurring topic in my history, write a 2-3 paragraph context
+                        briefing that I can hand to a new AI assistant so they can pick up where ChatGPT left
+                        off."</em></li>
+                <li><em>"List every technical stack, framework, language, and tool I've mentioned using. Group them by
+                        project."</em></li>
+            </ul>
+
+            <h3>NotebookLM — Preferences & Corrections</h3>
+            <ul>
+                <li><em>"Find every instance where I corrected the AI's behavior, asked it to change format, or said
+                        something like 'don't do X' or 'always do Y'. Compile these into a single instruction
+                        set."</em></li>
+                <li><em>"What formatting preferences do I have? (markdown style, code block usage, response length,
+                        bullet points vs prose, etc.)"</em></li>
+            </ul>
+
+            <h3>NotebookLM — Knowledge Gaps</h3>
+            <ul>
+                <li><em>"What topics have I repeatedly asked about in different ways, suggesting I'm still learning or
+                        uncertain? Summarize these as areas where I'd benefit from a structured explanation."</em></li>
+            </ul>
+
+            <h3>Claude — Onboarding</h3>
+            <ul>
+                <li><em>"Read through my conversation history in your Project Knowledge. Based on what you learn,
+                        introduce yourself to me the way I'd want an AI assistant to talk to me — matching my
+                        communication style and acknowledging what you know about my projects and
+                        preferences."</em></li>
+            </ul>
+
+            <h3>Claude — Continuing Projects</h3>
+            <ul>
+                <li><em>"Based on my conversation history, what are my active/unfinished projects? For each one,
+                        summarize the current state, what decisions were already made, and what the likely next steps
+                        are."</em></li>
+            </ul>
+
+            <h3>Claude — Custom Instructions Generation</h3>
+            <ul>
+                <li><em>"From my conversation history, generate a system prompt for yourself that captures: my preferred
+                        response style, formatting rules, tone, recurring topics, and any explicit instructions I've
+                        given to AI assistants."</em></li>
+            </ul>
+
+            <h3>Claude — Decision Patterns</h3>
+            <ul>
+                <li><em>"Analyze how I make decisions based on my conversations. Do I tend to overthink, act
+                        impulsively, seek validation, or weigh pros and cons methodically? Give me an honest assessment
+                        with examples."</em></li>
+            </ul>
+
+            <h3>Claude — Periodic Review</h3>
+            <ul>
+                <li><em>"Compare my conversations from 6+ months ago to my most recent ones. How have my questions,
+                        tone, and topics evolved? What does this suggest about my growth or changing
+                        priorities?"</em></li>
+            </ul>
         </div>
 
         <div class="footer">
